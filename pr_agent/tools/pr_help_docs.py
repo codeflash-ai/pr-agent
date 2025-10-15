@@ -18,6 +18,20 @@ from pr_agent.git_providers import get_git_provider_with_context
 from pr_agent.log import get_logger
 from pr_agent.servers.help import HelpMessage
 
+_REPLACEMENTS = {
+    "'": '',
+    "`": '',
+    '(': '',
+    ')': '',
+    ',': '',
+    '.': '',
+    '?': '',
+    '!': '',
+    ' ': '-'
+}
+
+_REPLACEMENT_PATTERN = re.compile('|'.join(map(re.escape, _REPLACEMENTS.keys())))
+
 
 #Common code that can be called from similar tools:
 def modify_answer_section(ai_response: str) -> str | None:
@@ -170,10 +184,10 @@ def format_markdown_q_and_a_response(question_str: str, response_str: str, relev
                                      supported_suffixes: list[str], base_url_prefix: str, base_url_suffix: str="") -> str:
     try:
         base_url_prefix = base_url_prefix.strip('/') #Sanitize base_url_prefix
-        answer_str = ""
-        answer_str += f"### Question: \n{question_str}\n\n"
-        answer_str += f"### Answer:\n{response_str.strip()}\n\n"
-        answer_str += f"#### Relevant Sources:\n\n"
+        answer_parts = []
+        answer_parts.append(f"### Question: \n{question_str}\n\n")
+        answer_parts.append(f"### Answer:\n{response_str.strip()}\n\n")
+        answer_parts.append(f"#### Relevant Sources:\n\n")
         for section in relevant_sections:
             file = section.get('file_name').lstrip('/').strip() #Remove any '/' in the beginning, since some models do it anyway
             ext = [suffix for suffix in supported_suffixes if file.endswith(suffix)]
@@ -183,10 +197,10 @@ def format_markdown_q_and_a_response(question_str: str, response_str: str, relev
             if str(section['relevant_section_header_string']).strip():
                 markdown_header = format_markdown_header(section['relevant_section_header_string'])
                 if base_url_prefix:
-                    answer_str += f"> - {base_url_prefix}/{file}{base_url_suffix}#{markdown_header}\n"
+                    answer_parts.append(f"> - {base_url_prefix}/{file}{base_url_suffix}#{markdown_header}\n")
             else:
-                answer_str += f"> - {base_url_prefix}/{file}{base_url_suffix}\n"
-        return answer_str
+                answer_parts.append(f"> - {base_url_prefix}/{file}{base_url_suffix}\n")
+        return ''.join(answer_parts)
     except Exception as e:
         get_logger().exception(f"Unexpected exception thrown. Returning empty result.")
         return ""
@@ -196,24 +210,8 @@ def format_markdown_header(header: str) -> str:
         # First, strip common characters from both ends
         cleaned = header.strip('# 💎\n')
 
-        # Define all characters to be removed/replaced in a single pass
-        replacements = {
-            "'": '',
-            "`": '',
-            '(': '',
-            ')': '',
-            ',': '',
-            '.': '',
-            '?': '',
-            '!': '',
-            ' ': '-'
-        }
-
-        # Compile regex pattern for characters to remove
-        pattern = re.compile('|'.join(map(re.escape, replacements.keys())))
-
         # Perform replacements in a single pass and convert to lowercase
-        return pattern.sub(lambda m: replacements[m.group()], cleaned).lower()
+        return _REPLACEMENT_PATTERN.sub(lambda m: _REPLACEMENTS[m.group()], cleaned).lower()
     except Exception:
         get_logger().exception(f"Error while formatting markdown header", artifacts={'header': header})
         return ""
