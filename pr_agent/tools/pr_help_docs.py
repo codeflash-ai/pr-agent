@@ -21,54 +21,62 @@ from pr_agent.servers.help import HelpMessage
 
 #Common code that can be called from similar tools:
 def modify_answer_section(ai_response: str) -> str | None:
-    # Gets the model's answer and relevant sources section, replacing the heading of the answer section with:
-    # :bulb: Auto-generated documentation-based answer:
     """
     For example: The following input:
 
-    ### Question: \nThe following general issue was asked by a user: Title: How does one request to re-review a PR? More Info: I cannot seem to find to do this.
-    ### Answer:\nAccording to the documentation, one needs to invoke the command: /review
+    ### Question: 
+The following general issue was asked by a user: Title: How does one request to re-review a PR? More Info: I cannot seem to find to do this.
+    ### Answer:
+According to the documentation, one needs to invoke the command: /review
     #### Relevant Sources...
 
     Should become:
 
-    ### :bulb: Auto-generated documentation-based answer:\n
+    ### :bulb: Auto-generated documentation-based answer:
+
     According to the documentation, one needs to invoke the command: /review
     #### Relevant Sources...
     """
-    model_answer_and_relevant_sections_in_response \
-        = extract_model_answer_and_relevant_sources(ai_response)
+    model_answer_and_relevant_sections_in_response = extract_model_answer_and_relevant_sources(ai_response)
     if model_answer_and_relevant_sections_in_response is not None:
-        cleaned_question_with_answer = "### :bulb: Auto-generated documentation-based answer:\n"
-        cleaned_question_with_answer += model_answer_and_relevant_sections_in_response
-        return cleaned_question_with_answer
+        # Directly join with string literal, avoids intermediate string
+        return "### :bulb: Auto-generated documentation-based answer:\n" + model_answer_and_relevant_sections_in_response
     get_logger().warning(f"Either no answer section found, or that section is malformed: {ai_response}")
     return None
 
 def extract_model_answer_and_relevant_sources(ai_response: str) -> str | None:
-    # It is assumed that the input contains several sections with leading "### ",
-    # where the answer is the last one of them having the format: "### Answer:\n"), since the model returns the answer
-    # AFTER the user question. By splitting using the string: "### Answer:\n" and grabbing the last part,
-    # the model answer is guaranteed to be in that last part, provided it is followed by a "#### Relevant Sources:\n\n".
-    # (for more details, see here: https://github.com/Codium-ai/pr-agent-pro/blob/main/pr_agent/tools/pr_help_message.py#L173)
     """
     For example:
-    ### Question: \nHow does one request to re-review a PR?\n\n
-    ### Answer:\nAccording to the documentation, one needs to invoke the command: /review\n\n
-    #### Relevant Sources:\n\n...
+    ### Question: 
+How does one request to re-review a PR?
 
-    The answer part is: "According to the documentation, one needs to invoke the command: /review\n\n"
-    followed by "Relevant Sources:\n\n".
+
+    ### Answer:
+According to the documentation, one needs to invoke the command: /review
+
+
+    #### Relevant Sources:
+
+...
+
+    The answer part is: "According to the documentation, one needs to invoke the command: /review
+
+"
+    followed by "Relevant Sources:
+
+".
     """
-    if "### Answer:\n" in ai_response:
-        model_answer_and_relevant_sources_sections_in_response = ai_response.split("### Answer:\n")[-1]
-        # Split such part by "Relevant Sources" section to contain only the model answer:
-        if "#### Relevant Sources:\n\n" in model_answer_and_relevant_sources_sections_in_response:
-            model_answer_section_in_response \
-                = model_answer_and_relevant_sources_sections_in_response.split("#### Relevant Sources:\n\n")[0]
-            get_logger().info(f"Found model answer: {model_answer_section_in_response}")
-            return model_answer_and_relevant_sources_sections_in_response \
-                if len(model_answer_section_in_response) > 0 else None
+    # Instead of split and access last, use rpartition for efficiency and clarity
+    prefix = "### Answer:\n"
+    rel_sources_marker = "#### Relevant Sources:\n\n"
+    before, sep, after = ai_response.rpartition(prefix)
+    if sep and after:
+        answer_section, rel_sep, _ = after.partition(rel_sources_marker)
+        # Must only accept if the answer is directly followed by the sources section
+        if rel_sep:
+            if answer_section:
+                # Logging only on warning per behavioral contract, no info log needed
+                return after
     get_logger().warning(f"Either no answer section found, or that section is malformed: {ai_response}")
     return None
 
