@@ -281,8 +281,14 @@ def generate_full_patch(convert_hunks_to_line_numbers, file_dict, max_tokens_mod
     patches = []
     remaining_files_list_new = []
     files_in_patch_list = []
-    for filename, data in file_dict.items():
-        if filename not in remaining_files_list_prev:
+    settings = get_settings()
+    verbosity_level = settings.config.verbosity_level
+    hard_limit = max_tokens_model - OUTPUT_BUFFER_TOKENS_HARD_THRESHOLD
+    soft_limit = max_tokens_model - OUTPUT_BUFFER_TOKENS_SOFT_THRESHOLD
+    
+    for filename in remaining_files_list_prev:
+        data = file_dict.get(filename)
+        if not data:
             continue
 
         patch = data['patch']
@@ -290,29 +296,32 @@ def generate_full_patch(convert_hunks_to_line_numbers, file_dict, max_tokens_mod
         edit_type = data['edit_type']
 
         # Hard Stop, no more tokens
-        if total_tokens > max_tokens_model - OUTPUT_BUFFER_TOKENS_HARD_THRESHOLD:
-            get_logger().warning(f"File was fully skipped, no more tokens: {filename}.")
+        if total_tokens > hard_limit:
+            if verbosity_level >= 2:
+                get_logger().warning(f"File was fully skipped, no more tokens: {filename}.")
             continue
 
         # If the patch is too large, just show the file name
-        if total_tokens + new_patch_tokens > max_tokens_model - OUTPUT_BUFFER_TOKENS_SOFT_THRESHOLD:
+        if total_tokens + new_patch_tokens > soft_limit:
             # Current logic is to skip the patch if it's too large
             # TODO: Option for alternative logic to remove hunks from the patch to reduce the number of tokens
             #  until we meet the requirements
-            if get_settings().config.verbosity_level >= 2:
+            if verbosity_level >= 2:
                 get_logger().warning(f"Patch too large, skipping it: '{filename}'")
             remaining_files_list_new.append(filename)
             continue
 
         if patch:
+            stripped_filename = filename.strip()
+            stripped_patch = patch.strip()
             if not convert_hunks_to_line_numbers:
-                patch_final = f"\n\n## File: '{filename.strip()}'\n\n{patch.strip()}\n"
+                patch_final = f"\n\n## File: '{stripped_filename}'\n\n{stripped_patch}\n"
             else:
-                patch_final = "\n\n" + patch.strip()
+                patch_final = "\n\n" + stripped_patch
             patches.append(patch_final)
             total_tokens += token_handler.count_tokens(patch_final)
             files_in_patch_list.append(filename)
-            if get_settings().config.verbosity_level >= 2:
+            if verbosity_level >= 2:
                 get_logger().info(f"Tokens: {total_tokens}, last filename: {filename}")
     return total_tokens, patches, remaining_files_list_new, files_in_patch_list
 
