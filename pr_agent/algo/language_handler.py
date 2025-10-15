@@ -3,29 +3,44 @@ from typing import Dict
 
 from pr_agent.config_loader import get_settings
 
+_AUTO_GENERATED_FILES = (
+    "package-lock.json",
+    "yarn.lock",
+    "composer.lock",
+    "Gemfile.lock",
+    "poetry.lock",
+)
+
 
 def filter_bad_extensions(files):
-    # Bad Extensions, source: https://github.com/EleutherAI/github-downloader/blob/345e7c4cbb9e0dc8a0615fd995a08bf9d73b3fe6/download_repo_text.py  # noqa: E501
-    bad_extensions = get_settings().bad_extensions.default
-    if get_settings().config.use_extra_bad_extensions:
-        bad_extensions += get_settings().bad_extensions.extra
+    # Fetch settings once (saves redundant calls)
+    settings = get_settings()
+    # Always create a fresh set for bad_extensions per call to prevent side effects
+    bad_extensions = set(settings.bad_extensions.default)
+    if settings.config.use_extra_bad_extensions:
+        bad_extensions = bad_extensions.union(settings.bad_extensions.extra)
+    # Membership checks with sets
     return [f for f in files if f.filename is not None and is_valid_file(f.filename, bad_extensions)]
 
 
-def is_valid_file(filename:str, bad_extensions=None) -> bool:
+def is_valid_file(filename: str, bad_extensions=None) -> bool:
     if not filename:
         return False
-    if not bad_extensions:
-        bad_extensions = get_settings().bad_extensions.default
-        if get_settings().config.use_extra_bad_extensions:
-            bad_extensions += get_settings().bad_extensions.extra
 
-    auto_generated_files = ['package-lock.json', 'yarn.lock', 'composer.lock', 'Gemfile.lock', 'poetry.lock']
-    for forbidden_file in auto_generated_files:
-        if filename.endswith(forbidden_file):
-            return False
+    # Use provided bad_extensions if available (should be a set); otherwise, fetch and build set
+    if bad_extensions is None:
+        settings = get_settings()
+        bad_extensions = set(settings.bad_extensions.default)
+        if settings.config.use_extra_bad_extensions:
+            bad_extensions = bad_extensions.union(settings.bad_extensions.extra)
 
-    return filename.split('.')[-1] not in bad_extensions
+    # Fast suffix check with tuple for any of the forbidden files
+    if filename.endswith(_AUTO_GENERATED_FILES):
+        return False
+
+    # Fast set membership check
+    ext = filename.rsplit(".", 1)[-1]
+    return ext not in bad_extensions
 
 
 def sort_files_by_main_languages(languages: Dict, files: list):
