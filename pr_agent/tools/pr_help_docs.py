@@ -18,6 +18,25 @@ from pr_agent.git_providers import get_git_provider_with_context
 from pr_agent.log import get_logger
 from pr_agent.servers.help import HelpMessage
 
+REMOVE_HTML_COMMENT_RE = re.compile(r'<!--.*?-->', re.DOTALL)
+
+REMOVE_FRONTMATTER_YAML_RE = re.compile(r'^---\s*\n.*?\n---\s*\n', re.DOTALL)
+
+REMOVE_FRONTMATTER_TOML_RE = re.compile(r'^\+\+\+\s*\n.*?\n\+\+\+\s*\n', re.DOTALL)
+
+REMOVE_EXCESSIVE_BLANKS_RE = re.compile(r'\n{3,}')
+
+REMOVE_STYLING_TAGS_RE = re.compile(r'<div.*?>|</div>|<span.*?>|</span>', re.DOTALL)
+
+REMOVE_IMAGE_MARKDOWN_RE = re.compile(r'!\[.*?\]\(.*?\)')
+
+REMOVE_IMAGE_ALT_TEXT_RE = re.compile(r'!\[(.*?)\]', re.DOTALL)
+
+REMOVE_SIMPLE_HTML_TAG_RE = re.compile(
+    r'<(?!table|tr|td|th|thead|tbody)([a-zA-Z][a-zA-Z0-9]*)[^>]*>(.*?)</\1>',
+    re.DOTALL
+)
+
 
 #Common code that can be called from similar tools:
 def modify_answer_section(ai_response: str) -> str | None:
@@ -230,27 +249,20 @@ def clean_markdown_content(content: str) -> str:
     """
     try:
         # Remove HTML comments
-        content = re.sub(r'<!--.*?-->', '', content, flags=re.DOTALL)
-
-        # Remove frontmatter (YAML between --- or +++ delimiters)
-        content = re.sub(r'^---\s*\n.*?\n---\s*\n', '', content, flags=re.DOTALL)
-        content = re.sub(r'^\+\+\+\s*\n.*?\n\+\+\+\s*\n', '', content, flags=re.DOTALL)
-
+        content = REMOVE_HTML_COMMENT_RE.sub('', content)
+        # Remove frontmatter (YAML or TOML)
+        content = REMOVE_FRONTMATTER_YAML_RE.sub('', content)
+        content = REMOVE_FRONTMATTER_TOML_RE.sub('', content)
         # Remove excessive blank lines (more than 2 consecutive)
-        content = re.sub(r'\n{3,}', '\n\n', content)
-
-        # Remove HTML tags that are often used for styling only
-        content = re.sub(r'<div.*?>|</div>|<span.*?>|</span>', '', content, flags=re.DOTALL)
-
-        # Remove image alt text which can be verbose
-        content = re.sub(r'!\[(.*?)\]', '![]', content)
-
-        # Remove images completely
-        content = re.sub(r'!\[.*?\]\(.*?\)', '', content)
-
-        # Remove simple HTML tags but preserve content between them
-        content = re.sub(r'<(?!table|tr|td|th|thead|tbody)([a-zA-Z][a-zA-Z0-9]*)[^>]*>(.*?)</\1>',
-                         r'\2', content, flags=re.DOTALL)
+        content = REMOVE_EXCESSIVE_BLANKS_RE.sub('\n\n', content)
+        # Remove styling HTML tags
+        content = REMOVE_STYLING_TAGS_RE.sub('', content)
+        # Remove images (full markdown image syntax)
+        content = REMOVE_IMAGE_MARKDOWN_RE.sub('', content)
+        # Remove remaining image alt texts
+        content = REMOVE_IMAGE_ALT_TEXT_RE.sub('![]', content)
+        # Remove simple HTML tags but preserve inner content
+        content = REMOVE_SIMPLE_HTML_TAG_RE.sub(r'\2', content)
         return content.strip()
     except Exception as e:
         get_logger().exception(f"Unexpected exception thrown. Returning empty result.")
