@@ -21,6 +21,9 @@ from pr_agent.config_loader import get_settings
 from pr_agent.git_providers.utils import apply_repo_settings
 from pr_agent.log import LoggingFormat, get_logger, setup_logger
 from pr_agent.servers.utils import verify_signature
+from types import MappingProxyType
+
+_STATUS_OK_RESPONSE = MappingProxyType({"status": "ok"})
 
 setup_logger(fmt=LoggingFormat.JSON, level=get_settings().get("CONFIG.LOG_LEVEL", "DEBUG"))
 router = APIRouter()
@@ -239,7 +242,7 @@ def _get_commands_list_from_settings(setting_key:str ) -> list:
 
 @router.get("/")
 async def root():
-    return {"status": "ok"}
+    return _STATUS_OK_RESPONSE
 
 
 def start():
