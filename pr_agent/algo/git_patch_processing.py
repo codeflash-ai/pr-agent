@@ -7,6 +7,9 @@ from pr_agent.algo.types import EDIT_TYPE, FilePatchInfo
 from pr_agent.config_loader import get_settings
 from pr_agent.log import get_logger
 
+RE_HUNK_HEADER = re.compile(
+    r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@[ ]?(.*)")
+
 
 def extend_patch(original_file_str, patch_str, patch_extra_lines_before=0,
                  patch_extra_lines_after=0, filename: str = "", new_file_str="") -> str:
@@ -54,8 +57,11 @@ def should_skip_patch(filename):
 
 
 def process_patch_lines(patch_str, original_file_str, patch_extra_lines_before, patch_extra_lines_after, new_file_str=""):
-    allow_dynamic_context = get_settings().config.allow_dynamic_context
-    patch_extra_lines_before_dynamic = get_settings().config.max_extra_lines_before_dynamic_context
+    # Fetch settings once and cache in local vars (rather than many repeated get_settings() calls)
+    settings = get_settings()
+    config = settings.config
+    allow_dynamic_context = config.allow_dynamic_context
+    patch_extra_lines_before_dynamic = config.max_extra_lines_before_dynamic_context
 
     file_original_lines = original_file_str.splitlines()
     file_new_lines = new_file_str.splitlines() if new_file_str else []
@@ -65,10 +71,9 @@ def process_patch_lines(patch_str, original_file_str, patch_extra_lines_before, 
 
     is_valid_hunk = True
     start1, size1, start2, size2 = -1, -1, -1, -1
-    RE_HUNK_HEADER = re.compile(
-        r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@[ ]?(.*)")
+
     try:
-        for i,line in enumerate(patch_lines):
+        for i, line in enumerate(patch_lines):
             if line.startswith('@@'):
                 match = RE_HUNK_HEADER.match(line)
                 # identify hunk header
@@ -102,13 +107,13 @@ def process_patch_lines(patch_str, original_file_str, patch_extra_lines_before, 
                             lines_before_original = file_original_lines[extended_start1 - 1:start1 - 1]
                             lines_before_new = file_new_lines[extended_start2 - 1:start2 - 1]
                             found_header = False
-                            for i, line in enumerate(lines_before_original):
+                            for idx, line in enumerate(lines_before_original):
                                 if section_header in line:
                                     # Update start and size in one line each
-                                    extended_start1, extended_start2 = extended_start1 + i, extended_start2 + i
-                                    extended_size1, extended_size2 = extended_size1 - i, extended_size2 - i
-                                    lines_before_original_dynamic_context = lines_before_original[i:]
-                                    lines_before_new_dynamic_context = lines_before_new[i:]
+                                    extended_start1, extended_start2 = extended_start1 + idx, extended_start2 + idx
+                                    extended_size1, extended_size2 = extended_size1 - idx, extended_size2 - idx
+                                    lines_before_original_dynamic_context = lines_before_original[idx:]
+                                    lines_before_new_dynamic_context = lines_before_new[idx:]
                                     if lines_before_original_dynamic_context == lines_before_new_dynamic_context:
                                         # get_logger().debug(f"found dynamic context match for section header: {section_header}")
                                         found_header = True
@@ -131,14 +136,14 @@ def process_patch_lines(patch_str, original_file_str, patch_extra_lines_before, 
                             delta_lines_new = [f' {line}' for line in file_new_lines[extended_start2 - 1:start2 - 1]]
                             if delta_lines_original != delta_lines_new:
                                 found_mini_match = False
-                                for i in range(len(delta_lines_original)):
-                                    if delta_lines_original[i:] == delta_lines_new[i:]:
-                                        delta_lines_original = delta_lines_original[i:]
-                                        delta_lines_new = delta_lines_new[i:]
-                                        extended_start1 += i
-                                        extended_size1 -= i
-                                        extended_start2 += i
-                                        extended_size2 -= i
+                                for idx in range(len(delta_lines_original)):
+                                    if delta_lines_original[idx:] == delta_lines_new[idx:]:
+                                        delta_lines_original = delta_lines_original[idx:]
+                                        delta_lines_new = delta_lines_new[idx:]
+                                        extended_start1 += idx
+                                        extended_size1 -= idx
+                                        extended_start2 += idx
+                                        extended_size2 -= idx
                                         found_mini_match = True
                                         break
                                 if not found_mini_match:
@@ -212,14 +217,12 @@ def check_if_hunk_lines_matches_to_file(i, original_lines, patch_lines, start1):
 
 
 def extract_hunk_headers(match):
-    res = list(match.groups())
-    for i in range(len(res)):
-        if res[i] is None:
-            res[i] = 0
+    res = match.groups()
+    res_int = [int(x) if x is not None else 0 for x in res[:4]]
     try:
-        start1, size1, start2, size2 = map(int, res[:4])
+        start1, size1, start2, size2 = res_int
     except:  # '@@ -0,0 +1 @@' case
-        start1, size1, size2 = map(int, res[:3])
+        start1, size1, size2 = res_int[:3]
         start2 = 0
     section_header = res[4]
     return section_header, size1, size2, start1, start2
