@@ -22,6 +22,8 @@ from pr_agent.git_providers.utils import apply_repo_settings
 from pr_agent.log import LoggingFormat, get_logger, setup_logger
 from pr_agent.servers.utils import verify_signature
 
+_redirect_response = RedirectResponse(url="/webhook")
+
 setup_logger(fmt=LoggingFormat.JSON, level=get_settings().get("CONFIG.LOG_LEVEL", "DEBUG"))
 router = APIRouter()
 
@@ -125,7 +127,7 @@ def should_process_pr_logic(data) -> bool:
 
 @router.post("/")
 async def redirect_to_webhook():
-    return RedirectResponse(url="/webhook")
+    return _redirect_response
 
 @router.post("/webhook")
 async def handle_webhook(background_tasks: BackgroundTasks, request: Request):
