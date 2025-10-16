@@ -1021,7 +1021,7 @@ def clip_tokens(text: str, max_tokens: int, add_three_dots=True, num_input_token
         text (str): The string to clip. If empty or None, returns the input unchanged.
         max_tokens (int): The maximum number of tokens allowed in the string.
                          If negative, returns an empty string.
-        add_three_dots (bool, optional): Whether to add "\\n...(truncated)" at the end
+        add_three_dots (bool, optional): Whether to add "\n...(truncated)" at the end
                                        of the clipped text to indicate truncation.
                                        Defaults to True.
         num_input_tokens (int, optional): Pre-computed number of tokens in the input text.
@@ -1061,7 +1061,7 @@ def clip_tokens(text: str, max_tokens: int, add_three_dots=True, num_input_token
         (truncated)
 
         With line deletion:
-        >>> multiline_text = "Line 1\\nLine 2\\nLine 3"
+        >>> multiline_text = "Line 1\nLine 2\nLine 3"
         >>> result = clip_tokens(multiline_text, max_tokens=3, delete_last_line=True)
         >>> print(result)
         Line 1
@@ -1077,30 +1077,29 @@ def clip_tokens(text: str, max_tokens: int, add_three_dots=True, num_input_token
     if not text:
         return text
 
+    if max_tokens < 0:
+        return ""
+
     try:
         if num_input_tokens is None:
             encoder = TokenEncoder.get_token_encoder()
             num_input_tokens = len(encoder.encode(text))
         if num_input_tokens <= max_tokens:
             return text
-        if max_tokens < 0:
-            return ""
 
-        # calculate the number of characters to keep
         num_chars = len(text)
         chars_per_token = num_chars / num_input_tokens
-        factor = 0.9  # reduce by 10% to be safe
+        factor = 0.9
         num_output_chars = int(factor * chars_per_token * max_tokens)
 
-        # clip the text
         if num_output_chars > 0:
             clipped_text = text[:num_output_chars]
             if delete_last_line:
                 clipped_text = clipped_text.rsplit('\n', 1)[0]
             if add_three_dots:
                 clipped_text += "\n...(truncated)"
-        else: # if the text is empty
-            clipped_text =  ""
+        else:
+            clipped_text = ""
 
         return clipped_text
     except Exception as e:
