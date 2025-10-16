@@ -13,6 +13,8 @@ from ..config_loader import get_settings
 from ..log import get_logger
 from .git_provider import GitProvider
 
+_CODECOMMIT_HOST_RE = re.compile(r"^[a-z]{2}-(gov-)?[a-z]+-\d\.console\.aws\.amazon\.com$")
+
 
 class PullRequestCCMimic:
     """
@@ -359,7 +361,7 @@ class CodeCommitProvider(GitProvider):
         Returns:
         - bool: True if the hostname is valid, False otherwise.
         """
-        return re.match(r"^[a-z]{2}-(gov-)?[a-z]+-\d\.console\.aws\.amazon\.com$", hostname) is not None
+        return _CODECOMMIT_HOST_RE.match(hostname) is not None
 
     def _get_pr(self):
         response = self.codecommit_client.get_pr(self.repo_name, self.pr_num)
