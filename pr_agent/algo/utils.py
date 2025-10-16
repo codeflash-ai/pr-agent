@@ -30,6 +30,8 @@ from pr_agent.algo.types import FilePatchInfo
 from pr_agent.config_loader import get_settings, global_settings
 from pr_agent.log import get_logger
 
+_MAX_HASH_INT = 2 ** 256 - 1
+
 
 def get_model(model_type: str = "model_weak") -> str:
     if model_type == "model_weak" and get_settings().get("config.model_weak"):
@@ -1308,12 +1310,11 @@ def string_to_uniform_number(s: str) -> float:
     The uniform distribution is achieved by the nature of the SHA-256 hash function, which produces a uniformly distributed hash value over its output space.
     """
     # Generate a hash of the string
-    hash_object = hashlib.sha256(s.encode())
+    hash_object = hashlib.sha256(s.encode()).digest()
     # Convert the hash to an integer
-    hash_int = int(hash_object.hexdigest(), 16)
+    hash_int = int.from_bytes(hash_object, 'big')
     # Normalize the integer to the range [0, 1]
-    max_hash_int = 2 ** 256 - 1
-    uniform_number = float(hash_int) / max_hash_int
+    uniform_number = float(hash_int) / _MAX_HASH_INT
     return uniform_number
 
 
