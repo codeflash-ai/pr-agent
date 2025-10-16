@@ -13,6 +13,8 @@ from pr_agent.agent.pr_agent import PRAgent
 from pr_agent.config_loader import get_settings, global_settings
 from pr_agent.log import get_logger, setup_logger
 
+_OK_STATUS = {"status": "ok"}
+
 setup_logger()
 router = APIRouter()
 
@@ -39,14 +41,8 @@ async def handle_gerrit_request(action: Action, item: Item):
 
     if action == Action.ask:
         if not item.msg:
-            return HTTPException(
-                status_code=400,
-                detail="msg is required for ask command"
-            )
-    await PRAgent().handle_request(
-        f"{item.project}:{item.refspec}",
-        f"/{item.msg.strip()}"
-    )
+            return HTTPException(status_code=400, detail="msg is required for ask command")
+    await PRAgent().handle_request(f"{item.project}:{item.refspec}", f"/{item.msg.strip()}")
 
 
 async def get_body(request):
@@ -60,7 +56,7 @@ async def get_body(request):
 
 @router.get("/")
 async def root():
-    return {"status": "ok"}
+    return _OK_STATUS
 
 
 def start():
@@ -73,5 +69,5 @@ def start():
     uvicorn.run(app, host="0.0.0.0", port=3000)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     start()
