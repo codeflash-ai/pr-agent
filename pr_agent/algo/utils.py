@@ -32,11 +32,19 @@ from pr_agent.log import get_logger
 
 
 def get_model(model_type: str = "model_weak") -> str:
-    if model_type == "model_weak" and get_settings().get("config.model_weak"):
-        return get_settings().config.model_weak
-    elif model_type == "model_reasoning" and get_settings().get("config.model_reasoning"):
-        return get_settings().config.model_reasoning
-    return get_settings().config.model
+    settings = get_settings()
+    # Get the config section only once for efficiency
+    config = getattr(settings, 'config', None)
+    if model_type == "model_weak":
+        if config and hasattr(config, 'model_weak') and getattr(config, 'model_weak'):
+            return config.model_weak
+    elif model_type == "model_reasoning":
+        if config and hasattr(config, 'model_reasoning') and getattr(config, 'model_reasoning'):
+            return config.model_reasoning
+    if config and hasattr(config, 'model'):
+        return config.model
+    # Fallback if config section does not exist
+    return settings.get("config.model")
 
 
 class Range(BaseModel):
