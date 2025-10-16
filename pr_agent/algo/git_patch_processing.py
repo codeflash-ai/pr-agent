@@ -47,9 +47,21 @@ def decode_if_bytes(original_file_str):
 
 
 def should_skip_patch(filename):
-    patch_extension_skip_types = get_settings().config.patch_extension_skip_types
-    if patch_extension_skip_types and filename:
-        return any(filename.endswith(skip_type) for skip_type in patch_extension_skip_types)
+    # Cache patch_extension_skip_types in a set for faster lookup, and as a tuple for endswith
+    if not hasattr(should_skip_patch, "_skip_types_tuple"):
+        patch_extension_skip_types = get_settings().config.patch_extension_skip_types
+        # Defensive: If config.patch_extension_skip_types is None or not iterable, fallback to empty tuple
+        if patch_extension_skip_types:
+            # Tuple for fast str.endswith
+            skip_types_tuple = tuple(patch_extension_skip_types)
+        else:
+            skip_types_tuple = ()
+        should_skip_patch._skip_types_tuple = skip_types_tuple
+    else:
+        skip_types_tuple = should_skip_patch._skip_types_tuple
+
+    if skip_types_tuple and filename:
+        return filename.endswith(skip_types_tuple)
     return False
 
 
@@ -212,14 +224,12 @@ def check_if_hunk_lines_matches_to_file(i, original_lines, patch_lines, start1):
 
 
 def extract_hunk_headers(match):
-    res = list(match.groups())
-    for i in range(len(res)):
-        if res[i] is None:
-            res[i] = 0
+    res = match.groups()
+    res_int = [int(x) if x is not None else 0 for x in res[:4]]
     try:
-        start1, size1, start2, size2 = map(int, res[:4])
+        start1, size1, start2, size2 = res_int
     except:  # '@@ -0,0 +1 @@' case
-        start1, size1, size2 = map(int, res[:3])
+        start1, size1, size2 = res_int[:3]
         start2 = 0
     section_header = res[4]
     return section_header, size1, size2, start1, start2
