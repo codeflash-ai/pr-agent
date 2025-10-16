@@ -30,6 +30,8 @@ from pr_agent.algo.types import FilePatchInfo
 from pr_agent.config_loader import get_settings, global_settings
 from pr_agent.log import get_logger
 
+_BOT_LABELS = {'bug fix', 'tests', 'enhancement', 'documentation', 'other'}
+
 
 def get_model(model_type: str = "model_weak") -> str:
     if model_type == "model_weak" and get_settings().get("config.model_weak"):
@@ -965,13 +967,18 @@ def get_user_labels(current_labels: List[str] = None):
     Only keep labels that has been added by the user
     """
     try:
-        enable_custom_labels = get_settings().config.get('enable_custom_labels', False)
-        custom_labels = get_settings().get('custom_labels', [])
+        settings = get_settings()
+        config = settings.config
+        enable_custom_labels = config.get('enable_custom_labels', False)
+        # Only fetch and lower custom_labels if needed
+        if enable_custom_labels:
+            custom_labels = set(settings.get('custom_labels', []))
         if current_labels is None:
             current_labels = []
         user_labels = []
         for label in current_labels:
-            if label.lower() in ['bug fix', 'tests', 'enhancement', 'documentation', 'other']:
+            label_lower = label.lower()
+            if label_lower in _BOT_LABELS:
                 continue
             if enable_custom_labels:
                 if label in custom_labels:
