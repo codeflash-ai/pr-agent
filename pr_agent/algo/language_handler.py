@@ -3,16 +3,43 @@ from typing import Dict
 
 from pr_agent.config_loader import get_settings
 
+_AUTO_GENERATED_FILES = (
+    "package-lock.json",
+    "yarn.lock",
+    "composer.lock",
+    "Gemfile.lock",
+    "poetry.lock",
+)
+
 
 def filter_bad_extensions(files):
-    # Bad Extensions, source: https://github.com/EleutherAI/github-downloader/blob/345e7c4cbb9e0dc8a0615fd995a08bf9d73b3fe6/download_repo_text.py  # noqa: E501
-    bad_extensions = get_settings().bad_extensions.default
-    if get_settings().config.use_extra_bad_extensions:
-        bad_extensions += get_settings().bad_extensions.extra
-    return [f for f in files if f.filename is not None and is_valid_file(f.filename, bad_extensions)]
+    """
+    Filters out files with bad extensions or auto-generated files.
+    The settings are fetched once per function call for efficiency.
+    """
+    settings = get_settings()
+    # Build the bad_extensions set, combining as needed, but *never* mutate the config's lists
+    default_bad_exts = set(settings.bad_extensions.default)
+    if settings.config.use_extra_bad_extensions:
+        bad_extensions = default_bad_exts | set(settings.bad_extensions.extra)
+    else:
+        bad_extensions = default_bad_exts
+
+    # Filter in a single pass using set and tuple checks for maximal efficiency
+    def is_valid(f):
+        filename = f.filename
+        if not filename:
+            return False
+        # Direct str.endswith with a tuple for all forbidden files at once
+        if filename.endswith(_AUTO_GENERATED_FILES):
+            return False
+        ext = filename.rpartition(".")[2]
+        return ext and ext not in bad_extensions
+
+    return [f for f in files if is_valid(f)]
 
 
-def is_valid_file(filename:str, bad_extensions=None) -> bool:
+def is_valid_file(filename: str, bad_extensions=None) -> bool:
     if not filename:
         return False
     if not bad_extensions:
@@ -20,12 +47,12 @@ def is_valid_file(filename:str, bad_extensions=None) -> bool:
         if get_settings().config.use_extra_bad_extensions:
             bad_extensions += get_settings().bad_extensions.extra
 
-    auto_generated_files = ['package-lock.json', 'yarn.lock', 'composer.lock', 'Gemfile.lock', 'poetry.lock']
+    auto_generated_files = ["package-lock.json", "yarn.lock", "composer.lock", "Gemfile.lock", "poetry.lock"]
     for forbidden_file in auto_generated_files:
         if filename.endswith(forbidden_file):
             return False
 
-    return filename.split('.')[-1] not in bad_extensions
+    return filename.split(".")[-1] not in bad_extensions
 
 
 def sort_files_by_main_languages(languages: Dict, files: list):
