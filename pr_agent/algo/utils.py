@@ -14,6 +14,7 @@ import time
 import traceback
 from datetime import datetime
 from enum import Enum
+from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any, List, Tuple, TypedDict
 
@@ -1443,11 +1444,7 @@ def set_file_languages(diff_files) -> List[FilePatchInfo]:
             return diff_files
 
         # map file extensions to programming languages
-        language_extension_map_org = get_settings().language_extension_map_org
-        extension_to_language = {}
-        for language, extensions in language_extension_map_org.items():
-            for ext in extensions:
-                extension_to_language[ext] = language
+        extension_to_language = _get_extension_to_language_map()
         for file in diff_files:
             extension_s = '.' + file.filename.rsplit('.')[-1]
             language_name = "txt"
@@ -1502,3 +1499,12 @@ def format_todo_items(value: list[TodoItem] | TodoItem, git_provider, gfm_suppor
         else:
             markdown_text += f"- {format_todo_item(value, git_provider, gfm_supported)}\n"
     return markdown_text
+
+@lru_cache(maxsize=1)
+def _get_extension_to_language_map():
+    language_extension_map_org = get_settings().language_extension_map_org
+    extension_to_language = {}
+    for language, extensions in language_extension_map_org.items():
+        for ext in extensions:
+            extension_to_language[ext] = language
+    return extension_to_language
