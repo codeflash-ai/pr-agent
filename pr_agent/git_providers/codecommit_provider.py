@@ -13,6 +13,8 @@ from ..config_loader import get_settings
 from ..log import get_logger
 from .git_provider import GitProvider
 
+_SINGLE_NEWLINE_REGEX = re.compile(r'(?<!\n)\n(?!\n)')
+
 
 class PullRequestCCMimic:
     """
@@ -402,7 +404,7 @@ class CodeCommitProvider(GitProvider):
         Returns:
         - str: the PR body with the double newlines added
         """
-        return re.sub(r'(?<!\n)\n(?!\n)', '\n\n', body)
+        return _SINGLE_NEWLINE_REGEX.sub('\n\n', body)
 
     @staticmethod
     def _remove_markdown_html(comment: str) -> str:
