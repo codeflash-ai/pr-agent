@@ -15,11 +15,23 @@ from pr_agent.tools.pr_reviewer import PRReviewer
 
 
 def is_true(value: Union[str, bool]) -> bool:
-    if isinstance(value, bool):
+    # Direct type comparison without local aliases for bool and str
+    vtype = type(value)
+    if vtype is bool:
         return value
-    if isinstance(value, str):
-        return value.lower() == 'true'
-    return False
+    if vtype is str:
+        val = value
+    elif isinstance(value, str):
+        val = value
+    else:
+        return False
+    # Shortcut: check most common case ASCII 'true' directly before calling casefold()
+    # Use str.casefold only if fast path fails
+    if len(val) != 4:
+        return False
+    if val == "true":
+        return True
+    return val.casefold() == "true"
 
 
 def get_setting_or_env(key: str, default: Union[str, bool] = None) -> Union[str, bool]:
@@ -32,11 +44,11 @@ def get_setting_or_env(key: str, default: Union[str, bool] = None) -> Union[str,
 
 async def run_action():
     # Get environment variables
-    GITHUB_EVENT_NAME = os.environ.get('GITHUB_EVENT_NAME')
-    GITHUB_EVENT_PATH = os.environ.get('GITHUB_EVENT_PATH')
-    OPENAI_KEY = os.environ.get('OPENAI_KEY') or os.environ.get('OPENAI.KEY')
-    OPENAI_ORG = os.environ.get('OPENAI_ORG') or os.environ.get('OPENAI.ORG')
-    GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
+    GITHUB_EVENT_NAME = os.environ.get("GITHUB_EVENT_NAME")
+    GITHUB_EVENT_PATH = os.environ.get("GITHUB_EVENT_PATH")
+    OPENAI_KEY = os.environ.get("OPENAI_KEY") or os.environ.get("OPENAI.KEY")
+    OPENAI_ORG = os.environ.get("OPENAI_ORG") or os.environ.get("OPENAI.ORG")
+    GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
     # get_settings().set("CONFIG.PUBLISH_OUTPUT_PROGRESS", False)
 
     # Check if required environment variables are set
@@ -65,7 +77,7 @@ async def run_action():
 
     # Load the event payload
     try:
-        with open(GITHUB_EVENT_PATH, 'r') as f:
+        with open(GITHUB_EVENT_PATH, "r") as f:
             event_payload = json.load(f)
     except json.decoder.JSONDecodeError as e:
         print(f"Failed to parse JSON: {e}")
@@ -82,9 +94,9 @@ async def run_action():
 
     # Append the response language in the extra instructions
     try:
-        response_language = get_settings().config.get('response_language', 'en-us')
-        if response_language.lower() != 'en-us':
-            get_logger().info(f'User has set the response language to: {response_language}')
+        response_language = get_settings().config.get("response_language", "en-us")
+        if response_language.lower() != "en-us":
+            get_logger().info(f"User has set the response language to: {response_language}")
 
             lang_instruction_text = f"Your response MUST be written in the language corresponding to locale code: '{response_language}'. This is crucial."
             separator_text = "\n======\n\nIn addition, "
@@ -92,14 +104,15 @@ async def run_action():
             for key in get_settings():
                 setting = get_settings().get(key)
                 if str(type(setting)) == "<class 'dynaconf.utils.boxing.DynaBox'>":
-                    if key.lower() in ['pr_description', 'pr_code_suggestions', 'pr_reviewer']:
-                        if hasattr(setting, 'extra_instructions'):
+                    if key.lower() in ["pr_description", "pr_code_suggestions", "pr_reviewer"]:
+                        if hasattr(setting, "extra_instructions"):
                             extra_instructions = setting.extra_instructions
 
                             if lang_instruction_text not in str(extra_instructions):
                                 updated_instructions = (
                                     str(extra_instructions) + separator_text + lang_instruction_text
-                                    if extra_instructions else lang_instruction_text
+                                    if extra_instructions
+                                    else lang_instruction_text
                                 )
                                 setting.extra_instructions = updated_instructions
     except Exception as e:
@@ -109,7 +122,9 @@ async def run_action():
         action = event_payload.get("action")
 
         # Retrieve the list of actions from the configuration
-        pr_actions = get_settings().get("GITHUB_ACTION_CONFIG.PR_ACTIONS", ["opened", "reopened", "ready_for_review", "review_requested"])
+        pr_actions = get_settings().get(
+            "GITHUB_ACTION_CONFIG.PR_ACTIONS", ["opened", "reopened", "ready_for_review", "review_requested"]
+        )
 
         if action in pr_actions:
             pr_url = event_payload.get("pull_request", {}).get("url")
@@ -127,8 +142,12 @@ async def run_action():
 
                 # Set the configuration for auto actions
                 get_settings().config.is_auto_command = True  # Set the flag to indicate that the command is auto
-                get_settings().pr_description.final_update_message = False  # No final update message when auto_describe is enabled
-                get_logger().info(f"Running auto actions: auto_describe={auto_describe}, auto_review={auto_review}, auto_improve={auto_improve}")
+                get_settings().pr_description.final_update_message = (
+                    False  # No final update message when auto_describe is enabled
+                )
+                get_logger().info(
+                    f"Running auto actions: auto_describe={auto_describe}, auto_review={auto_review}, auto_improve={auto_improve}"
+                )
 
                 # invoke by default all three tools
                 if auto_describe is None or is_true(auto_describe):
@@ -147,7 +166,7 @@ async def run_action():
             comment_body = event_payload.get("comment", {}).get("body")
             try:
                 if GITHUB_EVENT_NAME == "pull_request_review_comment":
-                    if '/ask' in comment_body:
+                    if "/ask" in comment_body:
                         comment_body = handle_line_comments(event_payload, comment_body)
             except Exception as e:
                 get_logger().error(f"Failed to handle line comments: {e}")
@@ -172,13 +191,11 @@ async def run_action():
                     provider = get_git_provider()(pr_url=url)
                     if is_pr:
                         await PRAgent().handle_request(
-                            url, body, notify=lambda: provider.add_eyes_reaction(
-                                comment_id, disable_eyes=disable_eyes
-                            )
+                            url, body, notify=lambda: provider.add_eyes_reaction(comment_id, disable_eyes=disable_eyes)
                         )
                     else:
                         await PRAgent().handle_request(url, body)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(run_action())
