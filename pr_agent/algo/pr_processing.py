@@ -339,15 +339,17 @@ async def retry_with_fallback_models(f: Callable, model_type: ModelType = ModelT
 
 
 def _get_all_models(model_type: ModelType = ModelType.REGULAR) -> List[str]:
+    settings = get_settings()
+    config = settings.config
     if model_type == ModelType.WEAK:
         model = get_model('model_weak')
     elif model_type == ModelType.REASONING:
         model = get_model('model_reasoning')
     elif model_type == ModelType.REGULAR:
-        model = get_settings().config.model
+        model = config.model
     else:
-        model = get_settings().config.model
-    fallback_models = get_settings().config.fallback_models
+        model = config.model
+    fallback_models = config.fallback_models
     if not isinstance(fallback_models, list):
         fallback_models = [m.strip() for m in fallback_models.split(",")]
     all_models = [model] + fallback_models
