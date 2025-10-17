@@ -27,6 +27,8 @@ from pr_agent.git_providers.azuredevops_provider import AzureDevopsProvider
 from pr_agent.git_providers.utils import apply_repo_settings
 from pr_agent.log import LoggingFormat, get_logger, setup_logger
 
+_ROOT_STATUS = {"status": "ok"}
+
 setup_logger(fmt=LoggingFormat.JSON, level=get_settings().get("CONFIG.LOG_LEVEL", "DEBUG"))
 security = HTTPBasic(auto_error=False)
 router = APIRouter()
@@ -34,6 +36,7 @@ available_commands_rgx = re.compile(r"^\/(" + "|".join(command2class.keys()) + r
 azure_devops_server = get_settings().get("azure_devops_server")
 WEBHOOK_USERNAME = azure_devops_server.get("webhook_username", None)
 WEBHOOK_PASSWORD = azure_devops_server.get("webhook_password", None)
+
 
 async def handle_request_comment(url: str, body: str, thread_id: int, comment_id: int, log_context: dict):
     log_context["action"] = body
@@ -43,7 +46,9 @@ async def handle_request_comment(url: str, body: str, thread_id: int, comment_id
             agent = PRAgent()
             provider = get_git_provider_with_context(pr_url=url)
             body = handle_line_comment(body, thread_id, provider)
-            handled = await agent.handle_request(url, body, notify=lambda: provider.reply_to_thread(thread_id, "On it! ⏳", True))
+            handled = await agent.handle_request(
+                url, body, notify=lambda: provider.reply_to_thread(thread_id, "On it! ⏳", True)
+            )
             # mark command comment as closed
             if handled:
                 provider.set_thread_status(thread_id, "closed")
@@ -51,14 +56,15 @@ async def handle_request_comment(url: str, body: str, thread_id: int, comment_id
     except Exception as e:
         get_logger().exception(f"Failed to handle webhook", artifact={"url": url, "body": body}, error=str(e))
 
+
 def handle_line_comment(body: str, thread_id: int, provider: AzureDevopsProvider):
     body = body.strip()
-    if not body.startswith('/ask '):
+    if not body.startswith("/ask "):
         return body
     thread_context = provider.get_thread_context(thread_id)
     if not thread_context:
         return body
-    
+
     path = thread_context.file_path
     if thread_context.left_file_end or thread_context.left_file_start:
         start_line = thread_context.left_file_start.line
@@ -71,29 +77,32 @@ def handle_line_comment(body: str, thread_id: int, provider: AzureDevopsProvider
     else:
         get_logger().info("No line range found in thread context", artifact={"thread_context": thread_context})
         return body
-    
-    question = body[5:].lstrip() # remove 4 chars: '/ask '
+
+    question = body[5:].lstrip()  # remove 4 chars: '/ask '
     return f"/ask_line --line_start={start_line} --line_end={end_line} --side={side} --file_name={path} --comment_id={thread_id} {question}"
+
 
 # currently only basic auth is supported with azure webhooks
 # for this reason, https must be enabled to ensure the credentials are not sent in clear text
 def authorize(credentials: HTTPBasicCredentials = Depends(security)):
     if WEBHOOK_USERNAME is None or WEBHOOK_PASSWORD is None:
         return
-    
+
     is_user_ok = secrets.compare_digest(credentials.username, WEBHOOK_USERNAME)
     is_pass_ok = secrets.compare_digest(credentials.password, WEBHOOK_PASSWORD)
     if not (is_user_ok and is_pass_ok):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail='Incorrect username or password.',
-            headers={'WWW-Authenticate': 'Basic'},
+            detail="Incorrect username or password.",
+            headers={"WWW-Authenticate": "Basic"},
         )
 
 
 async def _perform_commands_azure(commands_conf: str, agent: PRAgent, api_url: str, log_context: dict):
     apply_repo_settings(api_url)
-    if commands_conf == "pr_commands" and get_settings().config.disable_auto_feedback:  # auto commands for PR, and auto feedback is disabled
+    if (
+        commands_conf == "pr_commands" and get_settings().config.disable_auto_feedback
+    ):  # auto commands for PR, and auto feedback is disabled
         get_logger().info(f"Auto feedback is disabled, skipping auto commands for PR {api_url=}", **log_context)
         return
     commands = get_settings().get(f"azure_devops_server.{commands_conf}")
@@ -107,7 +116,7 @@ async def _perform_commands_azure(commands_conf: str, agent: PRAgent, api_url: s
             command = split_command[0]
             args = split_command[1:]
             other_args = update_settings_from_args(args)
-            new_command = ' '.join([command] + other_args)
+            new_command = " ".join([command] + other_args)
             get_logger().info(f"Performing command: {new_command}")
             with get_logger().contextualize(**log_context):
                 await agent.handle_request(api_url, new_command)
@@ -124,14 +133,14 @@ async def handle_request_azure(data, log_context):
         await _perform_commands_azure("pr_commands", PRAgent(), pr_url, log_context)
         return JSONResponse(
             status_code=status.HTTP_202_ACCEPTED,
-            content=jsonable_encoder({"message": "webhook triggered successfully"})
+            content=jsonable_encoder({"message": "webhook triggered successfully"}),
         )
     elif data["eventType"] == "ms.vss-code.git-pullrequest-comment-event" and "content" in data["resource"]["comment"]:
         comment = data["resource"]["comment"]
         if available_commands_rgx.match(comment["content"]):
-            if(data["resourceVersion"] == "2.0"):
+            if data["resourceVersion"] == "2.0":
                 repo = data["resource"]["pullRequest"]["repository"]["webUrl"]
-                pr_url = unquote(f'{repo}/pullrequest/{data["resource"]["pullRequest"]["pullRequestId"]}')
+                pr_url = unquote(f"{repo}/pullrequest/{data['resource']['pullRequest']['pullRequestId']}")
                 action = comment["content"]
                 thread_url = comment["_links"]["threads"]["href"]
                 thread_id = int(thread_url.split("/")[-1])
@@ -139,9 +148,16 @@ async def handle_request_azure(data, log_context):
                 pass
             else:
                 # API V1 not supported as it does not contain the PR URL
-                return JSONResponse(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    content=json.dumps({"message": "version 1.0 webhook for Azure Devops PR comment is not supported. please upgrade to version 2.0"})),
+                return (
+                    JSONResponse(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        content=json.dumps(
+                            {
+                                "message": "version 1.0 webhook for Azure Devops PR comment is not supported. please upgrade to version 2.0"
+                            }
+                        ),
+                    ),
+                )
         else:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -168,6 +184,7 @@ async def handle_request_azure(data, log_context):
         status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder({"message": "webhook triggered successfully"})
     )
 
+
 @router.post("/", dependencies=[Depends(authorize)])
 async def handle_webhook(background_tasks: BackgroundTasks, request: Request):
     log_context = {"server_type": "azure_devops_server"}
@@ -180,14 +197,19 @@ async def handle_webhook(background_tasks: BackgroundTasks, request: Request):
         status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder({"message": "webhook triggered successfully"})
     )
 
+
 @router.get("/")
 async def root():
-    return {"status": "ok"}
+    # Returning a constant dict literal is already optimal for this handler.
+    # To improve runtime and memory efficiency, use a module-level immutable object to avoid dict creation per call.
+    return _ROOT_STATUS
+
 
 def start():
     app = FastAPI(middleware=[Middleware(RawContextMiddleware)])
     app.include_router(router)
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "3000")))
+
 
 if __name__ == "__main__":
     start()
