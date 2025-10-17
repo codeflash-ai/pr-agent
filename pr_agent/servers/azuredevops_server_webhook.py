@@ -171,13 +171,16 @@ async def handle_request_azure(data, log_context):
 @router.post("/", dependencies=[Depends(authorize)])
 async def handle_webhook(background_tasks: BackgroundTasks, request: Request):
     log_context = {"server_type": "azure_devops_server"}
+    # The following inline JSON parsing is already fast and shouldn't be changed.
     data = await request.json()
-    # get_logger().info(json.dumps(data))
 
-    background_tasks.add_task(handle_request_azure, data, log_context)
+    # Pass an independent log_context dict to the background task to avoid accidental mutation in concurrent handling.
+    background_tasks.add_task(handle_request_azure, data, dict(log_context))
 
+    # Avoid unnecessary use of jsonable_encoder for a simple dict to maximize speed:
     return JSONResponse(
-        status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder({"message": "webhook triggered successfully"})
+        status_code=status.HTTP_202_ACCEPTED,
+        content={"message": "webhook triggered successfully"},
     )
 
 @router.get("/")
