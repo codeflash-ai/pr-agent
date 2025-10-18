@@ -7,6 +7,9 @@ from pr_agent.algo.types import EDIT_TYPE, FilePatchInfo
 from pr_agent.config_loader import get_settings
 from pr_agent.log import get_logger
 
+RE_HUNK_HEADER = re.compile(
+    r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@[ ]?(.*)")
+
 
 def extend_patch(original_file_str, patch_str, patch_extra_lines_before=0,
                  patch_extra_lines_after=0, filename: str = "", new_file_str="") -> str:
@@ -212,14 +215,16 @@ def check_if_hunk_lines_matches_to_file(i, original_lines, patch_lines, start1):
 
 
 def extract_hunk_headers(match):
-    res = list(match.groups())
-    for i in range(len(res)):
-        if res[i] is None:
-            res[i] = 0
+    res = match.groups()
     try:
-        start1, size1, start2, size2 = map(int, res[:4])
+        start1 = int(res[0]) if res[0] is not None else 0
+        size1 = int(res[1]) if res[1] is not None else 0
+        start2 = int(res[2]) if res[2] is not None else 0
+        size2 = int(res[3]) if res[3] is not None else 0
     except:  # '@@ -0,0 +1 @@' case
-        start1, size1, size2 = map(int, res[:3])
+        start1 = int(res[0]) if res[0] is not None else 0
+        size1 = int(res[1]) if res[1] is not None else 0
+        size2 = int(res[2]) if res[2] is not None else 0
         start2 = 0
     section_header = res[4]
     return section_header, size1, size2, start1, start2
@@ -414,15 +419,16 @@ __old hunk__
 
 def extract_hunk_lines_from_patch(patch: str, file_name, line_start, line_end, side, remove_trailing_chars: bool = True) -> tuple[str, str]:
     try:
-        patch_with_lines_str = f"\n\n## File: '{file_name.strip()}'\n\n"
-        selected_lines = ""
+        patch_with_lines_lst = []
+        selected_lines_lst = []
+        patch_with_lines_lst.append(f"\n\n## File: '{file_name.strip()}'\n\n")
         patch_lines = patch.splitlines()
-        RE_HUNK_HEADER = re.compile(
-            r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@[ ]?(.*)")
+        lower_side = side.lower()
         match = None
         start1, size1, start2, size2 = -1, -1, -1, -1
         skip_hunk = False
         selected_lines_num = 0
+
         for line in patch_lines:
             if 'no newline at end of file' in line.lower():
                 continue
@@ -437,28 +443,30 @@ def extract_hunk_lines_from_patch(patch: str, file_name, line_start, line_end, s
                 section_header, size1, size2, start1, start2 = extract_hunk_headers(match)
 
                 # check if line range is in this hunk
-                if side.lower() == 'left':
-                    # check if line range is in this hunk
+                if lower_side == 'left':
                     if not (start1 <= line_start <= start1 + size1):
                         skip_hunk = True
                         continue
-                elif side.lower() == 'right':
+                elif lower_side == 'right':
                     if not (start2 <= line_start <= start2 + size2):
                         skip_hunk = True
                         continue
-                patch_with_lines_str += f'\n{header_line}\n'
+                patch_with_lines_lst.append(f'\n{header_line}\n')
 
             elif not skip_hunk:
-                if side.lower() == 'right' and line_start <= start2 + selected_lines_num <= line_end:
-                    selected_lines += line + '\n'
-                if side.lower() == 'left' and start1 <= selected_lines_num + start1 <= line_end:
-                    selected_lines += line + '\n'
-                patch_with_lines_str += line + '\n'
-                if not line.startswith('-'): # currently we don't support /ask line for deleted lines
+                if lower_side == 'right' and line_start <= start2 + selected_lines_num <= line_end:
+                    selected_lines_lst.append(line + '\n')
+                if lower_side == 'left' and start1 <= selected_lines_num + start1 <= line_end:
+                    selected_lines_lst.append(line + '\n')
+                patch_with_lines_lst.append(line + '\n')
+                if not line.startswith('-'):
                     selected_lines_num += 1
     except Exception as e:
         get_logger().error(f"Failed to extract hunk lines from patch: {e}", artifact={"traceback": traceback.format_exc()})
         return "", ""
+
+    patch_with_lines_str = ''.join(patch_with_lines_lst)
+    selected_lines = ''.join(selected_lines_lst)
 
     if remove_trailing_chars:
         patch_with_lines_str = patch_with_lines_str.rstrip()
