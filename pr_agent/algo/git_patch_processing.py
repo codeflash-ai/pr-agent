@@ -212,15 +212,11 @@ def check_if_hunk_lines_matches_to_file(i, original_lines, patch_lines, start1):
 
 
 def extract_hunk_headers(match):
-    res = list(match.groups())
-    for i in range(len(res)):
-        if res[i] is None:
-            res[i] = 0
-    try:
-        start1, size1, start2, size2 = map(int, res[:4])
-    except:  # '@@ -0,0 +1 @@' case
-        start1, size1, size2 = map(int, res[:3])
-        start2 = 0
+    res = match.groups()
+    start1 = int(res[0]) if res[0] is not None else 0
+    size1 = int(res[1]) if res[1] is not None else 0
+    start2 = int(res[2]) if res[2] is not None else 0
+    size2 = int(res[3]) if res[3] is not None else 0
     section_header = res[4]
     return section_header, size1, size2, start1, start2
 
@@ -336,9 +332,9 @@ __old hunk__
         if hasattr(file, 'edit_type') and file.edit_type == EDIT_TYPE.DELETED:
             return f"\n\n## File '{file.filename.strip()}' was deleted\n"
 
-        patch_with_lines_str = f"\n\n## File: '{file.filename.strip()}'\n"
+        patch_with_lines_str = [f"\n\n## File: '{file.filename.strip()}'\n"]
     else:
-        patch_with_lines_str = ""
+        patch_with_lines_str = []
 
     patch_lines = patch.splitlines()
     RE_HUNK_HEADER = re.compile(
@@ -349,6 +345,19 @@ __old hunk__
     start1, size1, start2, size2 = -1, -1, -1, -1
     prev_header_line = []
     header_line = []
+
+    def any_plus_lines(lines):
+        for line in lines:
+            if line.startswith('+'):
+                return True
+        return False
+
+    def any_minus_lines(lines):
+        for line in lines:
+            if line.startswith('-'):
+                return True
+        return False
+
     for line_i, line in enumerate(patch_lines):
         if 'no newline at end of file' in line.lower():
             continue
@@ -358,20 +367,17 @@ __old hunk__
             match = RE_HUNK_HEADER.match(line)
             if match and (new_content_lines or old_content_lines):  # found a new hunk, split the previous lines
                 if prev_header_line:
-                    patch_with_lines_str += f'\n{prev_header_line}\n'
-                is_plus_lines = is_minus_lines = False
-                if new_content_lines:
-                    is_plus_lines = any([line.startswith('+') for line in new_content_lines])
-                if old_content_lines:
-                    is_minus_lines = any([line.startswith('-') for line in old_content_lines])
+                    patch_with_lines_str.append(f'\n{prev_header_line}\n')
+                is_plus_lines = any_plus_lines(new_content_lines) if new_content_lines else False
+                is_minus_lines = any_minus_lines(old_content_lines) if old_content_lines else False
                 if is_plus_lines or is_minus_lines: # notice 'True' here - we always present __new hunk__ for section, otherwise LLM gets confused
-                    patch_with_lines_str = patch_with_lines_str.rstrip() + '\n__new hunk__\n'
+                    patch_with_lines_str.append('__new hunk__\n')
                     for i, line_new in enumerate(new_content_lines):
-                        patch_with_lines_str += f"{start2 + i} {line_new}\n"
+                        patch_with_lines_str.append(f"{start2 + i} {line_new}\n")
                 if is_minus_lines:
-                    patch_with_lines_str = patch_with_lines_str.rstrip() + '\n__old hunk__\n'
+                    patch_with_lines_str.append('__old hunk__\n')
                     for line_old in old_content_lines:
-                        patch_with_lines_str += f"{line_old}\n"
+                        patch_with_lines_str.append(f"{line_old}\n")
                 new_content_lines = []
                 old_content_lines = []
             if match:
@@ -394,22 +400,19 @@ __old hunk__
 
     # finishing last hunk
     if match and new_content_lines:
-        patch_with_lines_str += f'\n{header_line}\n'
-        is_plus_lines = is_minus_lines = False
-        if new_content_lines:
-            is_plus_lines = any([line.startswith('+') for line in new_content_lines])
-        if old_content_lines:
-            is_minus_lines = any([line.startswith('-') for line in old_content_lines])
+        patch_with_lines_str.append(f'\n{header_line}\n')
+        is_plus_lines = any_plus_lines(new_content_lines) if new_content_lines else False
+        is_minus_lines = any_minus_lines(old_content_lines) if old_content_lines else False
         if is_plus_lines or is_minus_lines:  # notice 'True' here - we always present __new hunk__ for section, otherwise LLM gets confused
-            patch_with_lines_str = patch_with_lines_str.rstrip() + '\n__new hunk__\n'
+            patch_with_lines_str.append('__new hunk__\n')
             for i, line_new in enumerate(new_content_lines):
-                patch_with_lines_str += f"{start2 + i} {line_new}\n"
+                patch_with_lines_str.append(f"{start2 + i} {line_new}\n")
         if is_minus_lines:
-            patch_with_lines_str = patch_with_lines_str.rstrip() + '\n__old hunk__\n'
+            patch_with_lines_str.append('__old hunk__\n')
             for line_old in old_content_lines:
-                patch_with_lines_str += f"{line_old}\n"
+                patch_with_lines_str.append(f"{line_old}\n")
 
-    return patch_with_lines_str.rstrip()
+    return ''.join(patch_with_lines_str).rstrip()
 
 
 def extract_hunk_lines_from_patch(patch: str, file_name, line_start, line_end, side, remove_trailing_chars: bool = True) -> tuple[str, str]:
