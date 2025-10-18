@@ -7,6 +7,10 @@ from pr_agent.algo.types import EDIT_TYPE, FilePatchInfo
 from pr_agent.config_loader import get_settings
 from pr_agent.log import get_logger
 
+_settings_cache = None
+
+_patch_extensions_cache = None
+
 
 def extend_patch(original_file_str, patch_str, patch_extra_lines_before=0,
                  patch_extra_lines_after=0, filename: str = "", new_file_str="") -> str:
@@ -47,9 +51,20 @@ def decode_if_bytes(original_file_str):
 
 
 def should_skip_patch(filename):
-    patch_extension_skip_types = get_settings().config.patch_extension_skip_types
+    global _settings_cache, _patch_extensions_cache
+    
+    if _settings_cache is None:
+        _settings_cache = get_settings()
+    
+    if _patch_extensions_cache is None:
+        patch_extension_skip_types = _settings_cache.config.patch_extension_skip_types
+        if patch_extension_skip_types and not isinstance(patch_extension_skip_types, tuple):
+            patch_extension_skip_types = tuple(patch_extension_skip_types)
+        _patch_extensions_cache = patch_extension_skip_types
+    
+    patch_extension_skip_types = _patch_extensions_cache
     if patch_extension_skip_types and filename:
-        return any(filename.endswith(skip_type) for skip_type in patch_extension_skip_types)
+        return filename.endswith(patch_extension_skip_types)
     return False
 
 
@@ -212,14 +227,16 @@ def check_if_hunk_lines_matches_to_file(i, original_lines, patch_lines, start1):
 
 
 def extract_hunk_headers(match):
-    res = list(match.groups())
-    for i in range(len(res)):
-        if res[i] is None:
-            res[i] = 0
+    res = match.groups()
     try:
-        start1, size1, start2, size2 = map(int, res[:4])
+        start1 = int(res[0]) if res[0] is not None else 0
+        size1 = int(res[1]) if res[1] is not None else 0
+        start2 = int(res[2]) if res[2] is not None else 0
+        size2 = int(res[3]) if res[3] is not None else 0
     except:  # '@@ -0,0 +1 @@' case
-        start1, size1, size2 = map(int, res[:3])
+        start1 = int(res[0]) if res[0] is not None else 0
+        size1 = int(res[1]) if res[1] is not None else 0
+        size2 = int(res[2]) if res[2] is not None else 0
         start2 = 0
     section_header = res[4]
     return section_header, size1, size2, start1, start2
