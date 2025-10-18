@@ -24,6 +24,8 @@ from pr_agent.identity_providers.identity_provider import Eligibility
 from pr_agent.log import LoggingFormat, get_logger, setup_logger
 from pr_agent.servers.utils import DefaultDictWithTimeout, verify_signature
 
+_RESPONSE = {"status": "ok"}
+
 setup_logger(fmt=LoggingFormat.JSON, level=get_settings().get("CONFIG.LOG_LEVEL", "DEBUG"))
 base_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 build_number_path = os.path.join(base_path, "build_number.txt")
@@ -417,7 +419,7 @@ async def _perform_auto_commands_github(commands_conf: str, agent: PRAgent, body
 
 @router.get("/")
 async def root():
-    return {"status": "ok"}
+    return _RESPONSE
 
 
 if get_settings().github_app.override_deployment_type:
