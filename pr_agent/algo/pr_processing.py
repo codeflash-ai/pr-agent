@@ -281,8 +281,21 @@ def generate_full_patch(convert_hunks_to_line_numbers, file_dict, max_tokens_mod
     patches = []
     remaining_files_list_new = []
     files_in_patch_list = []
+
+    # Cache verbosity_level so that expensive config access isn't repeated in hot loop
+    settings = get_settings()
+    # config might rarely change but is extremely expensive to access, so cache for one complete function call
+    config = getattr(settings, 'config', None)
+    verbosity_level = getattr(config, 'verbosity_level', 0) if config is not None else 0
+
+    hard_threshold = max_tokens_model - OUTPUT_BUFFER_TOKENS_HARD_THRESHOLD
+    soft_threshold = max_tokens_model - OUTPUT_BUFFER_TOKENS_SOFT_THRESHOLD
+
+    # Use set for remaining_files_list_prev to optimize 'not in' checks for large sets
+    prev_files_set = set(remaining_files_list_prev)
+
     for filename, data in file_dict.items():
-        if filename not in remaining_files_list_prev:
+        if filename not in prev_files_set:
             continue
 
         patch = data['patch']
@@ -290,16 +303,17 @@ def generate_full_patch(convert_hunks_to_line_numbers, file_dict, max_tokens_mod
         edit_type = data['edit_type']
 
         # Hard Stop, no more tokens
-        if total_tokens > max_tokens_model - OUTPUT_BUFFER_TOKENS_HARD_THRESHOLD:
-            get_logger().warning(f"File was fully skipped, no more tokens: {filename}.")
+        if total_tokens > hard_threshold:
+            if verbosity_level >= 2:
+                get_logger().warning(f"File was fully skipped, no more tokens: {filename}.")
             continue
 
         # If the patch is too large, just show the file name
-        if total_tokens + new_patch_tokens > max_tokens_model - OUTPUT_BUFFER_TOKENS_SOFT_THRESHOLD:
+        if total_tokens + new_patch_tokens > soft_threshold:
             # Current logic is to skip the patch if it's too large
             # TODO: Option for alternative logic to remove hunks from the patch to reduce the number of tokens
             #  until we meet the requirements
-            if get_settings().config.verbosity_level >= 2:
+            if verbosity_level >= 2:
                 get_logger().warning(f"Patch too large, skipping it: '{filename}'")
             remaining_files_list_new.append(filename)
             continue
@@ -312,7 +326,7 @@ def generate_full_patch(convert_hunks_to_line_numbers, file_dict, max_tokens_mod
             patches.append(patch_final)
             total_tokens += token_handler.count_tokens(patch_final)
             files_in_patch_list.append(filename)
-            if get_settings().config.verbosity_level >= 2:
+            if verbosity_level >= 2:
                 get_logger().info(f"Tokens: {total_tokens}, last filename: {filename}")
     return total_tokens, patches, remaining_files_list_new, files_in_patch_list
 
