@@ -27,6 +27,11 @@ from pr_agent.git_providers.azuredevops_provider import AzureDevopsProvider
 from pr_agent.git_providers.utils import apply_repo_settings
 from pr_agent.log import LoggingFormat, get_logger, setup_logger
 
+_SUCCESS_RESPONSE = JSONResponse(
+    status_code=status.HTTP_202_ACCEPTED,
+    content=jsonable_encoder({"message": "webhook triggered successfully"})
+)
+
 setup_logger(fmt=LoggingFormat.JSON, level=get_settings().get("CONFIG.LOG_LEVEL", "DEBUG"))
 security = HTTPBasic(auto_error=False)
 router = APIRouter()
@@ -176,9 +181,8 @@ async def handle_webhook(background_tasks: BackgroundTasks, request: Request):
 
     background_tasks.add_task(handle_request_azure, data, log_context)
 
-    return JSONResponse(
-        status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder({"message": "webhook triggered successfully"})
-    )
+    # Use precomputed constant response to save JSON encoding and object allocation on each request.
+    return _SUCCESS_RESPONSE
 
 @router.get("/")
 async def root():
