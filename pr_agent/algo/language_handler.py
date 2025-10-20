@@ -6,26 +6,25 @@ from pr_agent.config_loader import get_settings
 
 def filter_bad_extensions(files):
     # Bad Extensions, source: https://github.com/EleutherAI/github-downloader/blob/345e7c4cbb9e0dc8a0615fd995a08bf9d73b3fe6/download_repo_text.py  # noqa: E501
-    bad_extensions = get_settings().bad_extensions.default
-    if get_settings().config.use_extra_bad_extensions:
-        bad_extensions += get_settings().bad_extensions.extra
+    settings = get_settings()
+    bad_extensions = _get_combined_bad_extensions(settings)
     return [f for f in files if f.filename is not None and is_valid_file(f.filename, bad_extensions)]
 
 
-def is_valid_file(filename:str, bad_extensions=None) -> bool:
+def is_valid_file(filename: str, bad_extensions=None) -> bool:
     if not filename:
         return False
-    if not bad_extensions:
-        bad_extensions = get_settings().bad_extensions.default
-        if get_settings().config.use_extra_bad_extensions:
-            bad_extensions += get_settings().bad_extensions.extra
 
-    auto_generated_files = ['package-lock.json', 'yarn.lock', 'composer.lock', 'Gemfile.lock', 'poetry.lock']
-    for forbidden_file in auto_generated_files:
-        if filename.endswith(forbidden_file):
-            return False
+    # Only call get_settings() if bad_extensions is not passed in
+    if bad_extensions is None:
+        settings = get_settings()
+        bad_extensions = _get_combined_bad_extensions(settings)
 
-    return filename.split('.')[-1] not in bad_extensions
+    auto_generated_files = ("package-lock.json", "yarn.lock", "composer.lock", "Gemfile.lock", "poetry.lock")
+    if filename.endswith(auto_generated_files):
+        return False
+
+    return filename.split(".")[-1] not in bad_extensions
 
 
 def sort_files_by_main_languages(languages: Dict, files: list):
@@ -75,3 +74,12 @@ def sort_files_by_main_languages(languages: Dict, files: list):
             files_sorted.append({"language": lang, "files": tmp})
     files_sorted.append({"language": "Other", "files": list(rest_files.values())})
     return files_sorted
+
+
+def _get_combined_bad_extensions(settings):
+    # Helper that safely creates a combined bad extension list
+    bad_ext = settings.bad_extensions.default
+    if settings.config.use_extra_bad_extensions:
+        # Avoid mutating the settings.bad_extensions.default list
+        bad_ext = bad_ext + settings.bad_extensions.extra
+    return set(bad_ext)  # Convert to set for fast lookup
