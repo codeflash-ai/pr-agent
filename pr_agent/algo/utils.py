@@ -936,10 +936,11 @@ def try_fix_yaml(response_text: str,
 
 
 def set_custom_labels(variables, git_provider=None):
-    if not get_settings().config.enable_custom_labels:
+    settings = get_settings()
+    if not settings.config.enable_custom_labels:
         return
 
-    labels = get_settings().get('custom_labels', {})
+    labels = settings.get('custom_labels', {})
     if not labels:
         # set default labels
         labels = ['Bug fix', 'Tests', 'Bug fix with tests', 'Enhancement', 'Documentation', 'Other']
@@ -950,14 +951,18 @@ def set_custom_labels(variables, git_provider=None):
 
     # Set custom labels
     variables["custom_labels_class"] = "class Label(str, Enum):"
-    counter = 0
     labels_minimal_to_labels_dict = {}
+
+    custom_labels_lines = []
+
+    # This minimizes string concatenation and replaces with list append/join, much faster for large N
     for k, v in labels.items():
+        key_minimal = k.lower().replace(' ', '_')
         description = "'" + v['description'].strip('\n').replace('\n', '\\n') + "'"
-        # variables["custom_labels_class"] += f"\n    {k.lower().replace(' ', '_')} = '{k}' # {description}"
-        variables["custom_labels_class"] += f"\n    {k.lower().replace(' ', '_')} = {description}"
-        labels_minimal_to_labels_dict[k.lower().replace(' ', '_')] = k
-        counter += 1
+        custom_labels_lines.append(f"\n    {key_minimal} = {description}")
+        labels_minimal_to_labels_dict[key_minimal] = k
+
+    variables["custom_labels_class"] += ''.join(custom_labels_lines)
     variables["labels_minimal_to_labels_dict"] = labels_minimal_to_labels_dict
 
 def get_user_labels(current_labels: List[str] = None):
