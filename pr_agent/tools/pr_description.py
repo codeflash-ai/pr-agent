@@ -29,6 +29,8 @@ from pr_agent.tools.ticket_pr_compliance_check import (
     extract_and_cache_pr_tickets, extract_ticket_links_from_pr_description,
     extract_tickets)
 
+_HTML_TAG_RE = re.compile('<[^>]+>')
+
 
 class PRDescription:
     def __init__(self, pr_url: str, args: list = None,
@@ -773,7 +775,7 @@ class PRDescription:
 def count_chars_without_html(string):
     if '<' not in string:
         return len(string)
-    no_html_string = re.sub('<[^>]+>', '', string)
+    no_html_string = _HTML_TAG_RE.sub('', string)
     return len(no_html_string)
 
 
