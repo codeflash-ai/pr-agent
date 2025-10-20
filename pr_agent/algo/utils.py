@@ -30,6 +30,8 @@ from pr_agent.algo.types import FilePatchInfo
 from pr_agent.config_loader import get_settings, global_settings
 from pr_agent.log import get_logger
 
+_SYSTEM_LABELS = {'bug fix', 'tests', 'enhancement', 'documentation', 'other'}
+
 
 def get_model(model_type: str = "model_weak") -> str:
     if model_type == "model_weak" and get_settings().get("config.model_weak"):
@@ -965,18 +967,15 @@ def get_user_labels(current_labels: List[str] = None):
     Only keep labels that has been added by the user
     """
     try:
-        enable_custom_labels = get_settings().config.get('enable_custom_labels', False)
-        custom_labels = get_settings().get('custom_labels', [])
+        settings = get_settings()
+        enable_custom_labels = settings.config.get('enable_custom_labels', False)
+        custom_labels = set(settings.get('custom_labels', [])) if enable_custom_labels else set()
         if current_labels is None:
             current_labels = []
-        user_labels = []
-        for label in current_labels:
-            if label.lower() in ['bug fix', 'tests', 'enhancement', 'documentation', 'other']:
-                continue
-            if enable_custom_labels:
-                if label in custom_labels:
-                    continue
-            user_labels.append(label)
+        user_labels = [
+            label for label in current_labels
+            if label.lower() not in _SYSTEM_LABELS and (not enable_custom_labels or label not in custom_labels)
+        ]
         if user_labels:
             get_logger().debug(f"Keeping user labels: {user_labels}")
     except Exception as e:
