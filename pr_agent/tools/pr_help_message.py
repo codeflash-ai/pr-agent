@@ -324,12 +324,14 @@ def generate_bbdc_table(column_arr_1, column_arr_2):
     separator_row = "|--|--|\n"
 
     # Generating data rows
-    data_rows = ""
+    data_rows_list = []
     max_len = max(len(column_arr_1), len(column_arr_2))
+    len1, len2 = len(column_arr_1), len(column_arr_2)
     for i in range(max_len):
-        col1 = column_arr_1[i] if i < len(column_arr_1) else ""
-        col2 = column_arr_2[i] if i < len(column_arr_2) else ""
-        data_rows += f"| {col1} | {col2} |\n"
+        col1 = column_arr_1[i] if i < len1 else ""
+        col2 = column_arr_2[i] if i < len2 else ""
+        data_rows_list.append(f"| {col1} | {col2} |\n")
+    data_rows = ''.join(data_rows_list)
 
     # Combine all parts to form the complete table
     markdown_table = header_row + separator_row + data_rows
