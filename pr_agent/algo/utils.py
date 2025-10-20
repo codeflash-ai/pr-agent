@@ -653,9 +653,9 @@ def fix_json_escape_char(json_message=None):
         # Find the offending character index:
         idx_to_replace = int(str(e).split(' ')[-1].replace(')', ''))
         # Remove the offending character:
-        json_message = list(json_message)
-        json_message[idx_to_replace] = ' '
-        new_message = ''.join(json_message)
+        msg_bytes = bytearray(json_message, 'utf-8')
+        msg_bytes[idx_to_replace] = ord(' ')
+        new_message = msg_bytes.decode('utf-8')
         return fix_json_escape_char(json_message=new_message)
     return result
 
