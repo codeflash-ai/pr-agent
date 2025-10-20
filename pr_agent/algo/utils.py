@@ -30,6 +30,25 @@ from pr_agent.algo.types import FilePatchInfo
 from pr_agent.config_loader import get_settings, global_settings
 from pr_agent.log import get_logger
 
+_file_walkthrough_pattern = None
+
+_file_row_pattern = re.compile(r'<tr>\s*<td>\s*(<details>\s*<summary>(.*?)</summary>(.*?)</details>)\s*</td>', re.DOTALL)
+
+_fallback_patterns = [
+    re.compile(
+        r'<details>\s*<summary><strong>(.*?)</strong>\s*<dd><code>(.*?)</code>.*?</summary>\s*<hr>\s*(.*?)\s*(?:<li>|•)(.*?)</details>',
+        re.DOTALL
+    ),
+    re.compile(
+        r'<details>\s*<summary><strong>(.*?)</strong><dd><code>(.*?)</code>.*?</summary>\s*<hr>\s*(.*?)\n\n\s*(.*?)</details>',
+        re.DOTALL
+    ),
+    re.compile(
+        r'<details>\s*<summary><strong>(.*?)</strong>\s*<dd><code>(.*?)</code>.*?</summary>\s*<hr>\s*(.*?)\s*-\s*(.*?)\s*</details>',
+        re.DOTALL
+    )
+]
+
 
 def get_model(model_type: str = "model_weak") -> str:
     if model_type == "model_weak" and get_settings().get("config.model_weak"):
@@ -1323,11 +1342,17 @@ def process_description(description_full: str) -> Tuple[str, List]:
 
     # description_split = description_full.split(PRDescriptionHeader.FILE_WALKTHROUGH.value)
     if PRDescriptionHeader.FILE_WALKTHROUGH.value in description_full:
+        global _file_walkthrough_pattern
         try:
-            # FILE_WALKTHROUGH are presented in a collapsible section in the description
-            regex_pattern = r'<details.*?>\s*<summary>\s*<h3>\s*' + re.escape(PRDescriptionHeader.FILE_WALKTHROUGH.value) + r'\s*</h3>\s*</summary>'
-            description_split = re.split(regex_pattern, description_full, maxsplit=1, flags=re.DOTALL)
-
+            # Compile only once globally
+            if _file_walkthrough_pattern is None:
+                _file_walkthrough_pattern = re.compile(
+                    r'<details.*?>\s*<summary>\s*<h3>\s*' +
+                    re.escape(PRDescriptionHeader.FILE_WALKTHROUGH.value) +
+                    r'\s*</h3>\s*</summary>',
+                    re.DOTALL
+                )
+            description_split = _file_walkthrough_pattern.split(description_full, maxsplit=1)
             # If the regex pattern is not found, fallback to the previous method
             if len(description_split) == 1:
                 get_logger().debug("Could not find regex pattern for file walkthrough, falling back to simple split")
@@ -1366,20 +1391,18 @@ def process_description(description_full: str) -> Tuple[str, List]:
             h.body_width = 0  # Disable line wrapping
 
             # find all the files
-            pattern = r'<tr>\s*<td>\s*(<details>\s*<summary>(.*?)</summary>(.*?)</details>)\s*</td>'
-            files_found = re.findall(pattern, changes_walkthrough_str, re.DOTALL)
+            files_found = _file_row_pattern.findall(changes_walkthrough_str)
             for file_data in files_found:
                 try:
+                    # file_data can be a tuple from the regex grouping
                     if isinstance(file_data, tuple):
                         file_data = file_data[0]
-                    pattern = r'<details>\s*<summary><strong>(.*?)</strong>\s*<dd><code>(.*?)</code>.*?</summary>\s*<hr>\s*(.*?)\s*(?:<li>|•)(.*?)</details>'
-                    res = re.search(pattern, file_data, re.DOTALL)
-                    if not res or res.lastindex != 4:
-                        pattern_back = r'<details>\s*<summary><strong>(.*?)</strong><dd><code>(.*?)</code>.*?</summary>\s*<hr>\s*(.*?)\n\n\s*(.*?)</details>'
-                        res = re.search(pattern_back, file_data, re.DOTALL)
-                    if not res or res.lastindex != 4:
-                        pattern_back = r'<details>\s*<summary><strong>(.*?)</strong>\s*<dd><code>(.*?)</code>.*?</summary>\s*<hr>\s*(.*?)\s*-\s*(.*?)\s*</details>' # looking for hypen ('- ')
-                        res = re.search(pattern_back, file_data, re.DOTALL)
+                    res = None
+                    for pattern in _fallback_patterns:
+                        res = pattern.search(file_data)
+                        if res and res.lastindex == 4:
+                            break
+
                     if res and res.lastindex == 4:
                         short_filename = res.group(1).strip()
                         short_summary = res.group(2).strip()
@@ -1407,7 +1430,6 @@ def process_description(description_full: str) -> Tuple[str, List]:
                             get_logger().warning(f"Failed to parse description", artifact={'description': file_data})
                 except Exception as e:
                     get_logger().exception(f"Failed to process description: {e}", artifact={'description': file_data})
-
 
     except Exception as e:
         get_logger().exception(f"Failed to process description: {e}")
